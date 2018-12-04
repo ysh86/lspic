@@ -85,7 +85,7 @@ type APP1Data struct {
 	IFDs         [][]*IFDEntry
 
 	// XMP
-	xmpPacket []byte
+	XmpPacket []byte
 	// ExtendedXMP
 	md5Digest         [32]byte
 	fullLength        int64
@@ -139,7 +139,7 @@ func (d *APP1Data) Parse(segment *Segment) error {
 			if err != nil {
 				return err
 			}
-			d.xmpPacket = payload
+			d.XmpPacket = payload
 			return nil
 		}
 
@@ -170,7 +170,7 @@ func (d *APP1Data) Parse(segment *Segment) error {
 			if err != nil {
 				return err
 			}
-			d.xmpPacket = payload
+			d.XmpPacket = payload
 			return nil
 		}
 
@@ -215,11 +215,11 @@ func (d *APP1Data) String() string {
 	buf.WriteString(fmt.Sprintf("  identifier: %s\n", d.identifier))
 
 	// XMP
-	if len(d.xmpPacket) != 0 {
+	if len(d.XmpPacket) != 0 {
 		if d.fullLength == 0 {
 			buf.WriteString("  XMP packet: 1st\n")
 		} else {
-			buf.WriteString(fmt.Sprintf("  XMP packet: %s, %d/%d, %d[bytes]\n", string(d.md5Digest[:]), d.offsetThisPortion, d.fullLength, len(d.xmpPacket)))
+			buf.WriteString(fmt.Sprintf("  XMP packet: %s, %d/%d, %d[bytes]\n", string(d.md5Digest[:]), d.offsetThisPortion, d.fullLength, len(d.XmpPacket)))
 		}
 		//buf.WriteString(string(d.xmpPacket))
 		//buf.WriteString("\n")

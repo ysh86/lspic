@@ -8,7 +8,7 @@ import (
 )
 
 func dumpSegment(segment *jpeg.Segment) {
-	fmt.Println(segment)
+	fmt.Fprintln(os.Stderr, segment)
 
 	var data jpeg.Segmenter
 	switch segment.Marker {
@@ -21,9 +21,19 @@ func dumpSegment(segment *jpeg.Segment) {
 	}
 	err := data.Parse(segment)
 	if err != nil {
-		fmt.Printf("  %v\n", err)
-	} else {
-		fmt.Print(data)
+		fmt.Fprintf(os.Stderr, "  %v\n", err)
+	}
+
+	fmt.Fprint(os.Stderr, data)
+
+	if d, ok := data.(*jpeg.APP1Data); ok {
+		dumpXmp(d)
+	}
+}
+
+func dumpXmp(data *jpeg.APP1Data) {
+	if len(data.XmpPacket) > 0 {
+		fmt.Print(string(data.XmpPacket))
 	}
 }
 
@@ -35,9 +45,9 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] != "-h" {
 		srcFile = os.Args[1]
 	} else {
-		fmt.Printf("Usage of %s:\n", os.Args[0])
-		fmt.Println("  string")
-		fmt.Println("\tsrc file")
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+		fmt.Fprintln(os.Stderr, "  string")
+		fmt.Fprintln(os.Stderr, "\tsrc file")
 		return
 	}
 
