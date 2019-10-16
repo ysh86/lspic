@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"private/lsjpeg"
+	"github.com/ysh86/lsjpeg"
 )
 
 func main() {
