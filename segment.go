@@ -53,6 +53,22 @@ type Segment struct {
 
 	payloadFileOffset int64
 	reader            io.ReadSeeker
+
+	parsedData Segmenter
+}
+
+// Parse parses a marker segment of jpeg.
+func (s *Segment) Parse() error {
+	switch s.Marker {
+	case APP1:
+		s.parsedData = &APP1Data{}
+	case APP0:
+		s.parsedData = &APP0Data{}
+	default:
+		s.parsedData = &SegmentData{}
+	}
+
+	return s.parsedData.Parse(s)
 }
 
 // Name generates the name string of the segment.
@@ -72,31 +88,9 @@ func (s *Segment) String() string {
 // DumpTo prints the content of Segment.
 func (s *Segment) DumpTo(w io.Writer) {
 	fmt.Fprintln(w, s)
-
-	var data Segmenter
-	switch s.Marker {
-	case APP1:
-		data = &APP1Data{}
-	case APP0:
-		data = &APP0Data{}
-	default:
-		data = &SegmentData{}
-	}
-	err := data.Parse(s)
-	if err != nil {
-		fmt.Fprintf(w, "  %v\n", err)
-	}
-
-	fmt.Fprint(w, data)
-
-	if d, ok := data.(*APP1Data); ok {
-		dumpXmp(d)
-	}
-}
-
-func dumpXmp(data *APP1Data) {
-	if len(data.XmpPacket) > 0 {
-		fmt.Print(string(data.XmpPacket))
+	fmt.Fprint(w, s.parsedData)
+	if d, ok := s.parsedData.(*APP1Data); ok {
+		d.dumpXmpPacketToStdout()
 	}
 }
 
@@ -268,6 +262,12 @@ func (d *APP1Data) String() string {
 		}
 	}
 	return buf.String()
+}
+
+func (d *APP1Data) dumpXmpPacketToStdout() {
+	if len(d.XmpPacket) > 0 {
+		fmt.Print(string(d.XmpPacket))
+	}
 }
 
 // Parse parses APP0 data.

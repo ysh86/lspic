@@ -40,6 +40,9 @@ func main() {
 		panic(err)
 	}
 	for _, s := range jpegFile.Segments {
+		if err := s.Parse(); err != nil {
+			panic(err)
+		}
 		s.DumpTo(os.Stderr)
 	}
 }

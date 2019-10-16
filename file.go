@@ -48,7 +48,7 @@ func (f *File) Parse() error {
 		}
 
 		offset += 2 // 'marker uint16'
-		f.Segments = append(f.Segments, &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length))})
+		f.Segments = append(f.Segments, &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length)), nil})
 	}
 
 	// APP1(Exif) or APP0(JFIF)
@@ -60,7 +60,7 @@ func (f *File) Parse() error {
 
 		length -= 2 // length includes 'length uint16' itself.
 		offset += 4 // 'marker uint16' + 'length uint16'
-		f.Segments = append(f.Segments, &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length))})
+		f.Segments = append(f.Segments, &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length)), nil})
 
 		offset, err = f.reader.Seek(int64(length), io.SeekCurrent)
 		if err != nil {
@@ -77,7 +77,7 @@ func (f *File) Parse() error {
 
 		length -= 2 // length includes 'length uint16' itself.
 		offset += 4 // 'marker uint16' + 'length uint16'
-		f.Segments = append(f.Segments, &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length))})
+		f.Segments = append(f.Segments, &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length)), nil})
 
 		offset, err = f.reader.Seek(int64(length), io.SeekCurrent)
 		if err != nil {
@@ -98,7 +98,7 @@ func (f *File) Parse() error {
 			return errors.New("invalid length of data")
 		}
 
-		f.Segments = append(f.Segments, &Segment{Data, length, offset, io.NewSectionReader(f.reader, offset, length)})
+		f.Segments = append(f.Segments, &Segment{Data, length, offset, io.NewSectionReader(f.reader, offset, length), nil})
 
 		offset += length
 	}
@@ -111,7 +111,7 @@ func (f *File) Parse() error {
 		}
 
 		offset += 2 // 'marker uint16'
-		f.Segments = append(f.Segments, &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length))})
+		f.Segments = append(f.Segments, &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length)), nil})
 	}
 
 	return nil
