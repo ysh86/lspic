@@ -1,4 +1,4 @@
-package jpeg
+package lsjpeg
 
 import (
 	"bytes"
@@ -67,6 +67,37 @@ func (s *Segment) Name() string {
 // String makes Segment satisfy the Stringer interface.
 func (s *Segment) String() string {
 	return fmt.Sprintf("%s: %08x, %d[bytes]", s.Name(), s.payloadFileOffset, s.Length)
+}
+
+// DumpTo prints the content of Segment.
+func (s *Segment) DumpTo(w io.Writer) {
+	fmt.Fprintln(w, s)
+
+	var data Segmenter
+	switch s.Marker {
+	case APP1:
+		data = &APP1Data{}
+	case APP0:
+		data = &APP0Data{}
+	default:
+		data = &SegmentData{}
+	}
+	err := data.Parse(s)
+	if err != nil {
+		fmt.Fprintf(w, "  %v\n", err)
+	}
+
+	fmt.Fprint(w, data)
+
+	if d, ok := data.(*APP1Data); ok {
+		dumpXmp(d)
+	}
+}
+
+func dumpXmp(data *APP1Data) {
+	if len(data.XmpPacket) > 0 {
+		fmt.Print(string(data.XmpPacket))
+	}
 }
 
 // Segmenter is the interface of Segment parser
