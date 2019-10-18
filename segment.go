@@ -86,11 +86,13 @@ func (s *Segment) String() string {
 }
 
 // DumpTo prints the content of Segment.
-func (s *Segment) DumpTo(w io.Writer) {
+func (s *Segment) DumpTo(w, wXmp io.Writer) {
 	fmt.Fprintln(w, s)
 	fmt.Fprint(w, s.parsedData)
+
+	// XMP
 	if d, ok := s.parsedData.(*APP1Data); ok {
-		d.dumpXmpPacketToStdout()
+		d.dumpXmpPacketTo(wXmp)
 	}
 }
 
@@ -246,15 +248,13 @@ func (d *APP1Data) String() string {
 		} else {
 			buf.WriteString(fmt.Sprintf("  XMP packet: %s, %d/%d, %d[bytes]\n", string(d.md5Digest[:]), d.offsetThisPortion, d.fullLength, len(d.XmpPacket)))
 		}
-		//buf.WriteString(string(d.xmpPacket))
-		//buf.WriteString("\n")
 		return buf.String()
 	}
 
 	// TIFF
 	buf.WriteString(fmt.Sprintf("  byte order: %s\n", d.byteOrder))
 	for i, ifd := range d.IFDs {
-		buf.WriteString(fmt.Sprintf("    ========= IDF: %d\n", i))
+		buf.WriteString(fmt.Sprintf("    ========= IFD: %d\n", i))
 		for _, entry := range ifd {
 			buf.WriteString(entry.String())
 			buf.WriteString(fmt.Sprintf("    segmentOffset: 0x%08x\n", d.offsetHeader+int64(entry.offset)))
@@ -264,9 +264,9 @@ func (d *APP1Data) String() string {
 	return buf.String()
 }
 
-func (d *APP1Data) dumpXmpPacketToStdout() {
+func (d *APP1Data) dumpXmpPacketTo(w io.Writer) {
 	if len(d.XmpPacket) > 0 {
-		fmt.Print(string(d.XmpPacket))
+		fmt.Fprint(w, string(d.XmpPacket))
 	}
 }
 
