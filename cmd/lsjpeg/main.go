@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/xml"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/ysh86/lsjpeg"
 )
@@ -49,11 +51,26 @@ func main() {
 	}
 	defer fxmp.Close()
 
+	var dataSeg *lsjpeg.Segment
+	nextShouldBeEOI := false
 	for _, s := range jpegFile.Segments {
 		if err := s.Parse(); err != nil {
 			panic(err)
 		}
 		s.DumpTo(os.Stdout, fxmp)
+
+		if nextShouldBeEOI {
+			if s.Marker == lsjpeg.EOI {
+				nextShouldBeEOI = false
+			} else {
+				panic(fmt.Errorf("missing EOI"))
+			}
+		}
+
+		if s.Marker == lsjpeg.Data {
+			dataSeg = s
+			nextShouldBeEOI = true
+		}
 	}
 
 	// XML:
@@ -175,6 +192,22 @@ func main() {
 				DepthData   string  `xml:"http://ns.google.com/photos/1.0/depthmap/ Data,attr"`
 				ImageMime   string  `xml:"http://ns.google.com/photos/1.0/image/ Mime,attr"`
 				ImageData   string  `xml:"http://ns.google.com/photos/1.0/image/ Data,attr"`
+
+				Container struct {
+					Directory struct {
+						Seq struct {
+							List []struct {
+								Item struct {
+									Mime    string `xml:"http://ns.google.com/photos/dd/1.0/item/ Mime,attr"`
+									Length  int64  `xml:"http://ns.google.com/photos/dd/1.0/item/ Length,attr"`
+									DataURI string `xml:"http://ns.google.com/photos/dd/1.0/item/ DataURI,attr"`
+
+									offset int64
+								} `xml:"http://ns.google.com/photos/dd/1.0/container/ Item"`
+							} `xml:"http://www.w3.org/1999/02/22-rdf-syntax-ns# li"`
+						} `xml:"http://www.w3.org/1999/02/22-rdf-syntax-ns# Seq"`
+					} `xml:"http://ns.google.com/photos/dd/1.0/container/ Directory"`
+				} `xml:"http://ns.google.com/photos/dd/1.0/device/ Container"`
 			} `xml:"http://www.w3.org/1999/02/22-rdf-syntax-ns# Description"`
 		} `xml:"http://www.w3.org/1999/02/22-rdf-syntax-ns# RDF"`
 	}
@@ -195,16 +228,72 @@ func main() {
 		xmps = append(xmps, xmp)
 	}
 
+	// Newer format
+	if len(xmps) > 1 && len(xmps[1].RDF.Description.Container.Directory.Seq.List) == 4 {
+		li := xmps[1].RDF.Description.Container.Directory.Seq.List
+
+		// Validate
+		if li[0].Item.Mime != "image/jpeg" ||
+			li[1].Item.Mime != "image/jpeg" ||
+			li[2].Item.Mime != "image/jpeg" ||
+			li[3].Item.Mime != "image/jpeg" ||
+			li[0].Item.Length != 0 ||
+			li[1].Item.Length <= 0 ||
+			li[2].Item.Length <= 0 ||
+			li[3].Item.Length <= 0 ||
+			li[0].Item.DataURI != "primary_image" ||
+			li[1].Item.DataURI != "android/original_image" ||
+			li[2].Item.DataURI != "android/depthmap" ||
+			li[3].Item.DataURI != "android/confidencemap" {
+			panic(fmt.Errorf("Unknown XMP format"))
+		}
+
+		length0 := dataSeg.Length + 2 /*EOI*/ - li[3].Item.Length - li[2].Item.Length - li[1].Item.Length
+		li[0].Item.offset = 0
+		li[1].Item.offset = length0
+		li[2].Item.offset = length0 + li[1].Item.Length
+		li[3].Item.offset = length0 + li[1].Item.Length + li[2].Item.Length
+
+		// dump
+		for i, l := range li {
+			fmt.Fprintf(os.Stderr, "Container: %d: %v\n", i, l.Item)
+
+			if l.Item.DataURI == "primary_image" {
+				continue
+			}
+			names := strings.Split(l.Item.DataURI, "/")
+			name := srcFile + "." + names[1] + ".jpg"
+
+			f, err := os.Create(name)
+			if err != nil {
+				panic(err)
+			}
+			written, err := dataSeg.SplitTo(f, l.Item.offset, l.Item.Length)
+			if err == io.EOF && l.Item.Length-written == 2 {
+				// add EOI
+				binary.Write(f, binary.BigEndian, lsjpeg.EOI)
+				err = nil
+			}
+			if err != nil {
+				panic(err)
+			}
+			f.Close()
+		}
+
+		return
+	}
+
 	// Validate
 	if len(xmps) != 2 ||
 		len(xmps[1].RDF.Description.DepthData) == 0 ||
 		len(xmps[1].RDF.Description.ImageData) == 0 ||
 		(xmps[0].RDF.Description.DepthMime != "image/jpeg" &&
-		xmps[1].RDF.Description.DepthMime != "image/jpeg" &&
-		xmps[0].RDF.Description.DepthMime != "image/png" &&
-		xmps[1].RDF.Description.DepthMime != "image/png") ||
+			xmps[1].RDF.Description.DepthMime != "image/jpeg" &&
+			xmps[0].RDF.Description.DepthMime != "image/png" &&
+			xmps[1].RDF.Description.DepthMime != "image/png") ||
 		(xmps[0].RDF.Description.ImageMime != "image/jpeg" && xmps[1].RDF.Description.ImageMime != "image/jpeg") {
-		panic(fmt.Errorf("Unknown XMP format"))
+		fmt.Fprintln(os.Stderr, "Unknown XMP format or No XMP")
+		return
 	}
 
 	// merge

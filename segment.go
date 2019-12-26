@@ -96,6 +96,15 @@ func (s *Segment) DumpTo(w, wXmp io.Writer) {
 	}
 }
 
+// SplitTo writes raw data to w.
+func (s *Segment) SplitTo(w io.Writer, offset, length int64) (int64, error) {
+	if _, ok := s.parsedData.(*SegmentData); ok {
+		s.reader.Seek(offset, io.SeekStart)
+		return io.CopyN(w, s.reader, length)
+	}
+	return 0, fmt.Errorf("invalid segment")
+}
+
 // Segmenter is the interface of Segment parser
 type Segmenter interface {
 	Parse(segment *Segment) error
