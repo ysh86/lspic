@@ -1,4 +1,4 @@
-package lsjpeg
+package jpeg
 
 import (
 	"bytes"
@@ -6,7 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
+
+	"github.com/ysh86/lspic/tiff"
 )
 
 // Marker Segment code
@@ -46,13 +47,13 @@ func init() {
 	}
 }
 
-// Segment is a marker segment of jpeg
+// Segment is a marker segment of jpeg.
 type Segment struct {
 	Marker uint16
 	Length int64
 
 	payloadFileOffset int64
-	reader            io.ReadSeeker
+	reader            *io.SectionReader
 
 	parsedData Segmenter
 }
@@ -115,10 +116,8 @@ type Segmenter interface {
 type APP1Data struct {
 	identifier string
 
-	// TIFF File Header
-	offsetHeader int64
-	byteOrder    binary.ByteOrder
-	IFDs         [][]*IFDEntry
+	// Exif
+	Exif *tiff.File
 
 	// XMP
 	XmpPacket []byte
@@ -146,22 +145,32 @@ type SegmentData struct {
 
 // Parse parses APP1 data.
 func (d *APP1Data) Parse(segment *Segment) error {
-	rs := segment.reader
+	sr := segment.reader
 
 	var ident [6]byte
-	if _, err := rs.Read(ident[:]); err != nil {
+	if _, err := sr.Read(ident[:]); err != nil {
 		return err
 	}
 	if bytes.Equal(ident[:], []byte{'E', 'x', 'i', 'f', 0, 0}) {
-		// TIFF
+		// Exif
 		d.identifier = string(ident[0:4])
+
+		// 0th IFD, 1st IFD (optional): thumbnail
+		offset := int64(len(ident))
+		length := segment.Length - int64(len(ident))
+		var err error
+		d.Exif, err = tiff.NewFile(io.NewSectionReader(sr, offset, length), segment.payloadFileOffset+offset)
+		if err != nil {
+			return err
+		}
+		return d.Exif.Parse()
 	} else {
 		// XMP
 		longIdent := make([]byte, 0, 64)
 		longIdent = append(longIdent, ident[:]...)
 		for {
 			var b byte
-			err := binary.Read(rs, binary.BigEndian, &b)
+			err := binary.Read(sr, binary.BigEndian, &b)
 			if err != nil || b == 0 {
 				break
 			}
@@ -171,7 +180,7 @@ func (d *APP1Data) Parse(segment *Segment) error {
 		d.identifier = string(longIdent)
 
 		if d.identifier == "http://ns.adobe.com/xap/1.0/" {
-			payload, err := ioutil.ReadAll(rs)
+			payload, err := io.ReadAll(sr)
 			if err != nil {
 				return err
 			}
@@ -181,14 +190,14 @@ func (d *APP1Data) Parse(segment *Segment) error {
 
 		if d.identifier == "http://ns.adobe.com/xmp/extension/" {
 			// GUID
-			_, err := rs.Read(d.md5Digest[:])
+			_, err := sr.Read(d.md5Digest[:])
 			if err != nil {
 				return err
 			}
 
 			// Full length
 			var l uint32
-			err = binary.Read(rs, binary.BigEndian, &l)
+			err = binary.Read(sr, binary.BigEndian, &l)
 			if err != nil {
 				return err
 			}
@@ -196,13 +205,13 @@ func (d *APP1Data) Parse(segment *Segment) error {
 
 			// Offset
 			var o uint32
-			err = binary.Read(rs, binary.BigEndian, &o)
+			err = binary.Read(sr, binary.BigEndian, &o)
 			if err != nil {
 				return err
 			}
 			d.offsetThisPortion = int64(o)
 
-			payload, err := ioutil.ReadAll(rs)
+			payload, err := io.ReadAll(sr)
 			if err != nil {
 				return err
 			}
@@ -212,37 +221,6 @@ func (d *APP1Data) Parse(segment *Segment) error {
 
 		return errors.New("invalid ident of APP1: " + d.identifier)
 	}
-
-	// TIFF File Header
-	offsetNext, offsetHeader, byteOrder, err := parseTiffHeader(rs)
-	if err != nil {
-		return err
-	}
-	d.offsetHeader = segment.payloadFileOffset + offsetHeader
-	d.byteOrder = byteOrder
-
-	if _, err := rs.Seek(offsetHeader+int64(offsetNext), io.SeekStart); err != nil {
-		return errors.New("invalid offset of 1st IFD")
-	}
-
-	// 0th IFD, 1st IFD (optional): thumbnail
-	for {
-		offsetNext, entries, err := parseTiffIfd(rs, byteOrder)
-		if err != nil {
-			return err
-		}
-		d.IFDs = append(d.IFDs, entries)
-
-		if offsetNext == 0 {
-			// 0 means the end of IFDs.
-			break
-		}
-		if _, err := rs.Seek(offsetHeader+int64(offsetNext), io.SeekStart); err != nil {
-			return errors.New("invalid offset of next IFD")
-		}
-	}
-
-	return nil
 }
 
 // String makes APP1Data satisfy the Stringer interface.
@@ -260,16 +238,9 @@ func (d *APP1Data) String() string {
 		return buf.String()
 	}
 
-	// TIFF
-	buf.WriteString(fmt.Sprintf("  byte order: %s\n", d.byteOrder))
-	for i, ifd := range d.IFDs {
-		buf.WriteString(fmt.Sprintf("    ========= IFD: %d\n", i))
-		for _, entry := range ifd {
-			buf.WriteString(entry.String())
-			buf.WriteString(fmt.Sprintf("    segmentOffset: 0x%08x\n", d.offsetHeader+int64(entry.offset)))
-			buf.WriteString(fmt.Sprintf("    ----\n"))
-		}
-	}
+	// Exif
+	buf.WriteString(d.Exif.String())
+
 	return buf.String()
 }
 

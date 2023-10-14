@@ -1,3 +1,3 @@
-module github.com/ysh86/lsjpeg
+module github.com/ysh86/lspic
 
-go 1.13
+go 1.20

@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ysh86/lsjpeg"
+	"github.com/ysh86/lspic/jpeg"
 )
 
 func main() {
@@ -37,7 +37,7 @@ func main() {
 		panic(err)
 	}
 
-	jpegFile, err := lsjpeg.NewFile(io.NewSectionReader(file, 0, stat.Size()))
+	jpegFile, err := jpeg.NewFile(io.NewSectionReader(file, 0, stat.Size()))
 	if err != nil {
 		panic(err)
 	}
@@ -51,7 +51,7 @@ func main() {
 	}
 	defer fxmp.Close()
 
-	var dataSeg *lsjpeg.Segment
+	var dataSeg *jpeg.Segment
 	nextShouldBeEOI := false
 	for _, s := range jpegFile.Segments {
 		if err := s.Parse(); err != nil {
@@ -60,14 +60,14 @@ func main() {
 		s.DumpTo(os.Stdout, fxmp)
 
 		if nextShouldBeEOI {
-			if s.Marker == lsjpeg.EOI {
+			if s.Marker == jpeg.EOI {
 				nextShouldBeEOI = false
 			} else {
 				panic(fmt.Errorf("missing EOI"))
 			}
 		}
 
-		if s.Marker == lsjpeg.Data {
+		if s.Marker == jpeg.Data {
 			dataSeg = s
 			nextShouldBeEOI = true
 		}
@@ -245,7 +245,7 @@ func main() {
 			li[1].Item.DataURI != "android/original_image" ||
 			li[2].Item.DataURI != "android/depthmap" ||
 			li[3].Item.DataURI != "android/confidencemap" {
-			panic(fmt.Errorf("Unknown XMP format"))
+			panic(fmt.Errorf("unknown XMP format"))
 		}
 
 		length0 := dataSeg.Length + 2 /*EOI*/ - li[3].Item.Length - li[2].Item.Length - li[1].Item.Length
@@ -271,7 +271,7 @@ func main() {
 			written, err := dataSeg.SplitTo(f, l.Item.offset, l.Item.Length)
 			if err == io.EOF && l.Item.Length-written == 2 {
 				// add EOI
-				binary.Write(f, binary.BigEndian, lsjpeg.EOI)
+				binary.Write(f, binary.BigEndian, jpeg.EOI)
 				err = nil
 			}
 			if err != nil {

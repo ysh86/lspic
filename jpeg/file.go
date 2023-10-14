@@ -1,4 +1,4 @@
-package lsjpeg
+package jpeg
 
 import (
 	"encoding/binary"
@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-// File is a struct for JPEG file.
+// File is a struct for the JPEG file(JFIF).
 type File struct {
 	Segments []*Segment
 
