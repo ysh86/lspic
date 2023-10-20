@@ -1,93 +1,12 @@
 package main
 
 import (
-	"bytes"
-	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/ysh86/lspic/png"
 )
-
-func dumpChunk(chunk io.Reader) {
-	var length int32
-	binary.Read(chunk, binary.BigEndian, &length)
-
-	chunkType := make([]byte, 4)
-	chunk.Read(chunkType)
-
-	fmt.Printf("chunk '%v' (%d bytes)", string(chunkType), length)
-
-	if bytes.Equal(chunkType, []byte("IHDR")) {
-		if length == 13 {
-			var v4 int32
-			var v1 int8
-			fmt.Printf(": ")
-			binary.Read(chunk, binary.BigEndian, &v4)
-			fmt.Printf("Width = %d, ", v4)
-			binary.Read(chunk, binary.BigEndian, &v4)
-			fmt.Printf("Height = %d, ", v4)
-			binary.Read(chunk, binary.BigEndian, &v1)
-			fmt.Printf("Bit depth = %d, ", v1)
-			binary.Read(chunk, binary.BigEndian, &v1)
-			fmt.Printf("Color type = %d, ", v1)
-			binary.Read(chunk, binary.BigEndian, &v1)
-			fmt.Printf("Compression method = %d, ", v1)
-			binary.Read(chunk, binary.BigEndian, &v1)
-			fmt.Printf("Filter method = %d, ", v1)
-			binary.Read(chunk, binary.BigEndian, &v1)
-			fmt.Printf("Interlace method = %d\n", v1)
-		} else {
-			fmt.Printf(": corrupted!\n")
-		}
-	} else if bytes.Equal(chunkType, []byte("sRGB")) {
-		if length == 1 {
-			var v1 int8
-			fmt.Printf(": ")
-			binary.Read(chunk, binary.BigEndian, &v1)
-			fmt.Printf("Rendering intent = %d\n", v1)
-		} else {
-			fmt.Printf(": corrupted!\n")
-		}
-	} else if bytes.Equal(chunkType, []byte("tEXt")) {
-		if length > 0 {
-			rawText := make([]byte, length)
-			chunk.Read(rawText)
-			fmt.Printf(": \"%s\"\n", string(rawText))
-		} else {
-			fmt.Printf(": corrupted!\n")
-		}
-	} else {
-		fmt.Printf("\n")
-	}
-
-	// TODO: CRC
-}
-
-func parseChunks(sr *io.SectionReader) (chunks []io.Reader, err error) {
-	signature := make([]byte, 8)
-	n, err := sr.Read(signature)
-	if err != nil || !bytes.Equal(signature, []byte{137, 80, 78, 71, 13, 10, 26, 10}) {
-		return nil, errors.New("invalid signature")
-	}
-
-	offset := int64(n)
-	for {
-		var length int32
-		err = binary.Read(sr, binary.BigEndian, &length)
-		if err != nil {
-			break
-		}
-		// chunk = length, type, data, CRC
-		chunks = append(chunks, io.NewSectionReader(sr, offset, 4+4+int64(length)+4))
-		offset, err = sr.Seek(4+int64(length)+4, io.SeekCurrent)
-		if err != nil {
-			break
-		}
-	}
-
-	return chunks, err
-}
 
 func main() {
 	// args
@@ -114,11 +33,14 @@ func main() {
 		panic(err)
 	}
 
-	chunks, err := parseChunks(io.NewSectionReader(file, 0, stat.Size()))
-	if err != io.EOF {
+	pngFile, err := png.NewFile(io.NewSectionReader(file, 0, stat.Size()))
+	if err != nil {
 		panic(err)
 	}
-	for _, chunk := range chunks {
-		dumpChunk(chunk)
+	if err := pngFile.Parse(); err != nil {
+		panic(err)
+	}
+	for _, chunk := range pngFile.Chunks {
+		png.DumpChunk(chunk)
 	}
 }
