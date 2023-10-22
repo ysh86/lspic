@@ -186,7 +186,8 @@ type OpPackBitsRect struct {
 	DstRect  image.Rectangle
 	Mode     uint16
 
-	pixData [][]byte
+	pixData  [][]byte
+	unpacked [][]byte
 }
 
 func (o *OpPackBitsRect) Parse(r *io.SectionReader) error {
@@ -286,10 +287,56 @@ func (o *OpPackBitsRect) Parse(r *io.SectionReader) error {
 		}
 	}
 
+	// unpack
+	o.unpacked = make([][]byte, o.Bounds.Dy())
+	for y := 0; y < o.Bounds.Dy(); y++ {
+		packed := o.pixData[y]
+		unpacked := make([]byte, o.RowBytes)
+		o.unpacked[y] = unpacked
+		for len(packed) > 0 {
+			l := packed[0]
+			packed = packed[1:]
+			if l&0x80 == 0 {
+				l += 1
+				copy(unpacked[0:l], packed[0:l])
+				packed = packed[l:]
+				unpacked = unpacked[l:]
+			} else {
+				l = 255 - l + 1 + 1
+				d := packed[0]
+				for i := byte(0); i < l; i++ {
+					unpacked[i] = d
+				}
+				packed = packed[1:]
+				unpacked = unpacked[l:]
+			}
+		}
+	}
+
 	return nil
 }
 func (o *OpPackBitsRect) Dump() {
-	fmt.Printf("  Op PackBitsRect: %+v\n", o)
+	fmt.Printf("  Op PackBitsRect: RowBytes=%d, Bounds=%+v, SrcRect=%+v, DstRect=%+v, Mode=%d\n",
+		o.RowBytes,
+		o.Bounds,
+		o.SrcRect,
+		o.DstRect,
+		o.Mode,
+	)
+	for i, row := range o.unpacked {
+		fmt.Printf("    %02d: ", i)
+		for _, d := range row {
+			for b := 7; b >= 0; b-- {
+				p := d & (1 << b)
+				if p != 0 {
+					fmt.Printf("@")
+				} else {
+					fmt.Printf(" ")
+				}
+			}
+		}
+		fmt.Println("")
+	}
 }
 
 type OpEndPic struct {
