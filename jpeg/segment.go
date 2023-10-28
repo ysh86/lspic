@@ -18,6 +18,7 @@ const (
 	APP0 uint16 = 0xffe0 // Application Segment 0 (JFIF)
 	APP1 uint16 = 0xffe1 // Application Segment 1 (Exif)
 	APP2 uint16 = 0xffe2 // Application Segment 2 (Flashpix)
+	COM  uint16 = 0xfffe // Comment
 	DQT  uint16 = 0xffdb // Define Quantization Table
 	DHT  uint16 = 0xffc4 // Define Huffman Table
 	DRI  uint16 = 0xffdd // Define Restart Interval
@@ -37,6 +38,7 @@ func init() {
 		APP0: "APP0",
 		APP1: "APP1",
 		APP2: "APP2",
+		COM:  "COM",
 		DQT:  "DQT",
 		DHT:  "DHT",
 		DRI:  "DRI",
