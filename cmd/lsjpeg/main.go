@@ -45,31 +45,46 @@ func main() {
 		panic(err)
 	}
 
-	fxmp, err := os.Create(srcFile + ".xmp")
-	if err != nil {
-		panic(err)
-	}
-	defer fxmp.Close()
-
+	// dump
+	hasXMP := false
 	var dataSeg *jpeg.Segment
 	nextShouldBeEOI := false
-	for _, s := range jpegFile.Segments {
-		if err := s.Parse(); err != nil {
-			panic(err)
+	for _, seg := range jpegFile.Segments {
+		seg.Dump()
+		if seg.HasXMP() {
+			hasXMP = true
 		}
-		s.DumpTo(os.Stdout, fxmp)
 
 		if nextShouldBeEOI {
-			if s.Marker == jpeg.EOI {
+			if seg.Marker == jpeg.EOI {
 				nextShouldBeEOI = false
 			} else {
 				panic(fmt.Errorf("missing EOI"))
 			}
 		}
 
-		if s.Marker == jpeg.Data {
-			dataSeg = s
+		if seg.Marker == jpeg.Data {
+			dataSeg = seg
 			nextShouldBeEOI = true
+		}
+	}
+	if !hasXMP {
+		return
+	}
+
+	// dump XMP
+	fxmp, err := os.Create(srcFile + ".xmp")
+	if err != nil {
+		panic(err)
+	}
+	defer fxmp.Close()
+
+	for _, seg := range jpegFile.Segments {
+		if seg.HasXMP() {
+			_, err := seg.SplitTo(fxmp, 0, -1)
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
 

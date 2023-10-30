@@ -48,7 +48,11 @@ func (f *File) Parse() error {
 		}
 
 		offset += 2 // 'marker uint16'
-		f.Segments = append(f.Segments, &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length)), nil})
+		seg := &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length)), nil}
+		if err := seg.Parse(); err != nil {
+			return err
+		}
+		f.Segments = append(f.Segments, seg)
 	}
 
 	// APP1(Exif) or APP0(JFIF)
@@ -60,7 +64,11 @@ func (f *File) Parse() error {
 
 		length -= 2 // length includes 'length uint16' itself.
 		offset += 4 // 'marker uint16' + 'length uint16'
-		f.Segments = append(f.Segments, &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length)), nil})
+		seg := &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length)), nil}
+		if err := seg.Parse(); err != nil {
+			return err
+		}
+		f.Segments = append(f.Segments, seg)
 
 		offset, err = f.reader.Seek(int64(length), io.SeekCurrent)
 		if err != nil {
@@ -77,7 +85,11 @@ func (f *File) Parse() error {
 
 		length -= 2 // length includes 'length uint16' itself.
 		offset += 4 // 'marker uint16' + 'length uint16'
-		f.Segments = append(f.Segments, &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length)), nil})
+		seg := &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length)), nil}
+		if err := seg.Parse(); err != nil {
+			return err
+		}
+		f.Segments = append(f.Segments, seg)
 
 		offset, err = f.reader.Seek(int64(length), io.SeekCurrent)
 		if err != nil {
@@ -98,7 +110,11 @@ func (f *File) Parse() error {
 			return errors.New("invalid length of data")
 		}
 
-		f.Segments = append(f.Segments, &Segment{Data, length, offset, io.NewSectionReader(f.reader, offset, length), nil})
+		seg := &Segment{Data, length, offset, io.NewSectionReader(f.reader, offset, length), nil}
+		if err := seg.Parse(); err != nil {
+			return err
+		}
+		f.Segments = append(f.Segments, seg)
 
 		offset += length
 	}
@@ -111,7 +127,11 @@ func (f *File) Parse() error {
 		}
 
 		offset += 2 // 'marker uint16'
-		f.Segments = append(f.Segments, &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length)), nil})
+		seg := &Segment{marker, int64(length), offset, io.NewSectionReader(f.reader, offset, int64(length)), nil}
+		if err := seg.Parse(); err != nil {
+			return err
+		}
+		f.Segments = append(f.Segments, seg)
 	}
 
 	return nil

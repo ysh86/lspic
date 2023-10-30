@@ -34,18 +34,18 @@ func init() {
 	markerSegmentName = map[uint16]string{
 		Unknown: "Unknown",
 
-		SOI:  "SOI",
+		SOI:  "SOI ",
 		APP0: "APP0",
 		APP1: "APP1",
 		APP2: "APP2",
-		COM:  "COM",
-		DQT:  "DQT",
-		DHT:  "DHT",
-		DRI:  "DRI",
-		SOF:  "SOF",
-		SOS:  "SOS",
+		COM:  "COM ",
+		DQT:  "DQT ",
+		DHT:  "DHT ",
+		DRI:  "DRI ",
+		SOF:  "SOF ",
+		SOS:  "SOS ",
 		Data: "Data",
-		EOI:  "EOI",
+		EOI:  "EOI ",
 	}
 }
 
@@ -78,7 +78,7 @@ func (s *Segment) Parse() error {
 func (s *Segment) Name() string {
 	name, ok := markerSegmentName[s.Marker]
 	if !ok {
-		name = fmt.Sprintf("%x", s.Marker)
+		name = fmt.Sprintf("%04x", s.Marker)
 	}
 	return name
 }
@@ -88,24 +88,29 @@ func (s *Segment) String() string {
 	return fmt.Sprintf("%s: %08x, %d[bytes]", s.Name(), s.payloadFileOffset, s.Length)
 }
 
-// DumpTo prints the content of Segment.
-func (s *Segment) DumpTo(w, wXmp io.Writer) {
-	fmt.Fprintln(w, s)
-	fmt.Fprint(w, s.parsedData)
-
-	// XMP
-	if d, ok := s.parsedData.(*APP1Data); ok {
-		d.dumpXmpPacketTo(wXmp)
-	}
+// Dump prints the content of Segment.
+func (s *Segment) Dump() {
+	fmt.Println(s)
+	fmt.Print(s.parsedData)
 }
 
 // SplitTo writes raw data to w.
 func (s *Segment) SplitTo(w io.Writer, offset, length int64) (int64, error) {
-	if _, ok := s.parsedData.(*SegmentData); ok {
-		s.reader.Seek(offset, io.SeekStart)
-		return io.CopyN(w, s.reader, length)
+	if ss, ok := s.parsedData.(SegmentSplitter); ok {
+		return ss.SplitTo(w, s.reader, offset, length)
 	}
-	return 0, fmt.Errorf("invalid segment")
+	return 0, fmt.Errorf("can not split the segment")
+}
+
+// HasXMP returns that the segment has XMP or not.
+func (s *Segment) HasXMP() bool {
+	if s.Marker == APP1 {
+		app1 := s.parsedData.(*APP1Data)
+		if len(app1.xmpPacket) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // Segmenter is the interface of Segment parser
@@ -114,35 +119,25 @@ type Segmenter interface {
 	fmt.Stringer
 }
 
+// SegmentSplitter is the interface of Segment parser and splitter
+type SegmentSplitter interface {
+	Segmenter
+	SplitTo(w io.Writer, r io.ReadSeeker, offset, length int64) (int64, error)
+}
+
 // APP1Data is the Application Segment 1 (Exif)
 type APP1Data struct {
 	identifier string
 
 	// Exif
-	Exif *tiff.File
+	exif *tiff.File
 
 	// XMP
-	XmpPacket []byte
+	xmpPacket []byte
 	// ExtendedXMP
 	md5Digest         [32]byte
 	fullLength        int64
 	offsetThisPortion int64
-}
-
-// APP0Data is the Application Segment 0 (JFIF)
-type APP0Data struct {
-	identifier string
-	version    uint16
-	units      uint8
-	xDensity   uint16
-	yDensity   uint16
-	xThumbnail uint8
-	yThumbnail uint8
-}
-
-// SegmentData is a dummy(unknown) segment
-type SegmentData struct {
-	// dummy
 }
 
 // Parse parses APP1 data.
@@ -161,11 +156,11 @@ func (d *APP1Data) Parse(segment *Segment) error {
 		offset := int64(len(ident))
 		length := segment.Length - int64(len(ident))
 		var err error
-		d.Exif, err = tiff.NewFile(io.NewSectionReader(sr, offset, length), segment.payloadFileOffset+offset)
+		d.exif, err = tiff.NewFile(io.NewSectionReader(sr, offset, length), segment.payloadFileOffset+offset)
 		if err != nil {
 			return err
 		}
-		return d.Exif.Parse()
+		return d.exif.Parse()
 	} else {
 		// XMP
 		longIdent := make([]byte, 0, 64)
@@ -186,7 +181,7 @@ func (d *APP1Data) Parse(segment *Segment) error {
 			if err != nil {
 				return err
 			}
-			d.XmpPacket = payload
+			d.xmpPacket = payload
 			return nil
 		}
 
@@ -217,7 +212,7 @@ func (d *APP1Data) Parse(segment *Segment) error {
 			if err != nil {
 				return err
 			}
-			d.XmpPacket = payload
+			d.xmpPacket = payload
 			return nil
 		}
 
@@ -230,26 +225,43 @@ func (d *APP1Data) String() string {
 	var buf bytes.Buffer
 	buf.WriteString(fmt.Sprintf("  identifier: %s\n", d.identifier))
 
+	// Exif
+	if d.exif != nil {
+		buf.WriteString(d.exif.String())
+		return buf.String()
+	}
+
 	// XMP
-	if len(d.XmpPacket) != 0 {
+	if len(d.xmpPacket) > 0 {
 		if d.fullLength == 0 {
 			buf.WriteString("  XMP packet: 1st\n")
 		} else {
-			buf.WriteString(fmt.Sprintf("  XMP packet: %s, %d/%d, %d[bytes]\n", string(d.md5Digest[:]), d.offsetThisPortion, d.fullLength, len(d.XmpPacket)))
+			buf.WriteString(fmt.Sprintf("  XMP packet: %s, %d/%d, %d[bytes]\n", string(d.md5Digest[:]), d.offsetThisPortion, d.fullLength, len(d.xmpPacket)))
 		}
 		return buf.String()
 	}
 
-	// Exif
-	buf.WriteString(d.Exif.String())
-
 	return buf.String()
 }
 
-func (d *APP1Data) dumpXmpPacketTo(w io.Writer) {
-	if len(d.XmpPacket) > 0 {
-		fmt.Fprint(w, string(d.XmpPacket))
+// SplitTo writes the XMP packet to w.
+func (d *APP1Data) SplitTo(w io.Writer, r io.ReadSeeker, offset, length int64) (int64, error) {
+	if len(d.xmpPacket) > 0 {
+		n, err := w.Write(d.xmpPacket)
+		return int64(n), err
 	}
+	return 0, nil
+}
+
+// APP0Data is the Application Segment 0 (JFIF)
+type APP0Data struct {
+	identifier string
+	version    uint16
+	units      uint8
+	xDensity   uint16
+	yDensity   uint16
+	xThumbnail uint8
+	yThumbnail uint8
 }
 
 // Parse parses APP0 data.
@@ -298,10 +310,15 @@ func (d *APP0Data) String() string {
 	buf.WriteString(fmt.Sprintf("  identifier: %s\n", d.identifier))
 	buf.WriteString(fmt.Sprintf("  version: %04x\n", d.version))
 	buf.WriteString(fmt.Sprintf("  units: %d\n", d.units))
-	buf.WriteString(fmt.Sprintf("  WxH: %dx%d\n", d.xDensity, d.yDensity))
+	buf.WriteString(fmt.Sprintf("  Density WxH: %dx%d\n", d.xDensity, d.yDensity))
 	buf.WriteString(fmt.Sprintf("  Thumbnail WxH: %dx%d\n", d.xThumbnail, d.yThumbnail))
 
 	return buf.String()
+}
+
+// SegmentData is a dummy(unknown) segment
+type SegmentData struct {
+	// dummy
 }
 
 // Parse is a dummy parser for generic segments.
@@ -312,4 +329,10 @@ func (d *SegmentData) Parse(segment *Segment) error {
 // String makes SegmentData satisfy the Stringer interface.
 func (d *SegmentData) String() string {
 	return ""
+}
+
+// SplitTo writes raw data to w.
+func (d *SegmentData) SplitTo(w io.Writer, r io.ReadSeeker, offset, length int64) (int64, error) {
+	r.Seek(offset, io.SeekStart)
+	return io.CopyN(w, r, length)
 }
