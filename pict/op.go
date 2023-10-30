@@ -176,6 +176,24 @@ func (o *OpQTcomp) Parse(r *io.SectionReader) error {
 func (o *OpQTcomp) Dump() {
 	fmt.Printf("  Op QTcomp: %+v\n", o)
 }
+func (o *OpQTcomp) DumpTo(w io.Writer) (int64, error) {
+	// atom
+	var dataSize uint32
+	_, err := o.reader.Seek(68+32+2+2+4+4, io.SeekStart)
+	if err != nil {
+		return 0, err
+	}
+	if err := binary.Read(o.reader, binary.BigEndian, &dataSize); err != nil {
+		return 0, err
+	}
+
+	// jfif
+	_, err = o.reader.Seek(68+0x56, io.SeekStart)
+	if err != nil {
+		return 0, err
+	}
+	return io.CopyN(w, o.reader, int64(dataSize))
+}
 
 type OpPackBitsRect struct {
 	Opcode uint16
