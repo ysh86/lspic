@@ -8,7 +8,7 @@ import (
 )
 
 type File struct {
-	Chunks []*io.SectionReader
+	Chunks []Chunk
 
 	reader *io.SectionReader
 }
@@ -33,7 +33,7 @@ func (f *File) Parse() error {
 			break
 		}
 		// chunk = length, type, data, CRC
-		f.Chunks = append(f.Chunks, io.NewSectionReader(f.reader, offset, 4+4+int64(length)+4))
+		f.Chunks = append(f.Chunks, Chunk{reader: io.NewSectionReader(f.reader, offset, 4+4+int64(length)+4)})
 		offset, err = f.reader.Seek(4+int64(length)+4, io.SeekCurrent)
 		if err != nil {
 			break

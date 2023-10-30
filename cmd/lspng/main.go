@@ -40,7 +40,9 @@ func main() {
 	if err := pngFile.Parse(); err != nil {
 		panic(err)
 	}
+
+	// dump
 	for _, chunk := range pngFile.Chunks {
-		png.DumpChunk(chunk)
+		chunk.Dump()
 	}
 }
